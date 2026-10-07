@@ -1,9 +1,11 @@
-import { Badge, Group, Progress, ScrollArea, Table, Text } from '@mantine/core';
-import { AlertCircle, CheckCircle2, TriangleAlert } from 'lucide-react';
+import { Alert, Badge, Button, Group, Progress, ScrollArea, Table, Text } from '@mantine/core';
+import { AlertCircle, CheckCircle2, RefreshCw, TriangleAlert } from 'lucide-react';
 import type { RouteAnalysis } from '../types/course';
 
 interface AnalysisPanelProps {
   analysis: RouteAnalysis;
+  stale?: boolean;
+  onRecompute?: () => void;
 }
 
 const levelMeta = {
@@ -12,9 +14,25 @@ const levelMeta = {
   error: { color: 'red', icon: AlertCircle, label: '风险' },
 } as const;
 
-export function AnalysisPanel({ analysis }: AnalysisPanelProps) {
+export function AnalysisPanel({ analysis, stale = false, onRecompute }: AnalysisPanelProps) {
   return (
     <div className="analysis-panel">
+      {stale && (
+        <Alert
+          color="yellow"
+          variant="light"
+          mb="md"
+          icon={<TriangleAlert size={16} />}
+          title="步数表与稳定度已失效"
+        >
+          <Text size="xs" mb="xs">
+            路线、场地尺寸或马匹步幅已变更，以下为旧结果。重算后才能导出裁判表。
+          </Text>
+          <Button size="xs" color="yellow" leftSection={<RefreshCw size={13} />} onClick={onRecompute}>
+            重新计算
+          </Button>
+        </Alert>
+      )}
       <Group justify="space-between" align="flex-end">
         <div>
           <Text size="xs" c="dimmed">路线稳定度</Text>

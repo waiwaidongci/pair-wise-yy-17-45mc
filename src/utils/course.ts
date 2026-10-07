@@ -245,23 +245,3 @@ export function generateRouteOptions(course: Course): RouteOption[] {
     };
   });
 }
-
-export function courseToShareToken(course: Course) {
-  const bytes = new TextEncoder().encode(JSON.stringify(course));
-  let binary = '';
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
-}
-
-export function courseFromShareToken(token: string): Course | null {
-  try {
-    const binary = atob(token);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes)) as Course;
-  } catch {
-    return null;
-  }
-}
-

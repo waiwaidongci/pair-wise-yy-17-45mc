@@ -84,6 +84,18 @@ button, input, textarea { font: inherit; }
 
 .workspace-column { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #fff; }
 .course-toolbar { height: 62px; flex: 0 0 62px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e2e8f0; }
+.collab-banner-stack { flex: 0 0 auto; display: grid; gap: 6px; padding: 8px 12px 0; background: #fff; }
+.collab-banner-stack:empty { display: none; }
+.collab-banner { margin: 0; }
+.collab-banner .mantine-Alert-body { flex: 1; }
+.conflict-icon { color: #dc2626; display: inline-flex; align-items: center; }
+.conflict-side { background: #f8fafc; }
+.conflict-side .mantine-Badge-root { align-self: flex-start; }
+.conflict-order {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  line-height: 1.6;
+  word-break: break-all;
+}
 .course-name-input input { font-size: 17px; font-weight: 850; }
 .course-name-input { min-width: 240px; }
 .arena-stage { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; background: #e7ebf0; }

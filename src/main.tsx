@@ -4,15 +4,18 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
 import { router } from './router';
-import { courseFromShareToken } from './utils/course';
+import { decodeShareToken } from './utils/collab';
 import { useCourseStore } from './stores/courseStore';
 import './styles.css';
 
 const shared = window.location.hash.match(/course=([^&]+)/)?.[1];
 if (shared) {
-  const sharedCourse = courseFromShareToken(decodeURIComponent(shared));
-  if (sharedCourse) {
-    useCourseStore.getState().loadCourse(sharedCourse);
+  const decoded = decodeShareToken(decodeURIComponent(shared));
+  if (decoded?.kind === 'envelope') {
+    useCourseStore.getState().openSharedEnvelope(decoded.envelope);
+    window.history.replaceState(null, '', window.location.pathname);
+  } else if (decoded?.kind === 'legacy') {
+    useCourseStore.getState().loadCourse(decoded.course);
     window.history.replaceState(null, '', window.location.pathname);
   }
 }
