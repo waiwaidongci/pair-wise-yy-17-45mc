@@ -36,15 +36,14 @@ import {
 import { ArenaCanvas } from '../components/ArenaCanvas';
 import { ObstacleInspector } from '../components/ObstacleInspector';
 import { AnalysisPanel } from '../components/AnalysisPanel';
+import { CollabBar, notify } from '../components/CollabBar';
+import { ConflictResolver } from '../components/ConflictResolver';
 import { useCourseStore } from '../stores/courseStore';
 import type { ObstaclePreset } from '../types/course';
-import {
-  OBSTACLE_PRESETS,
-  analyzeCourse,
-  courseToShareToken,
-} from '../utils/course';
+import { OBSTACLE_PRESETS, analyzeCourse } from '../utils/course';
+import { buildShareUrl } from '../utils/collab';
 import { courseToDataUrl } from '../utils/drawing';
-import { downloadJudgeSheet, openPrintableCourse } from '../utils/exports';
+import { downloadJudgeSheet, getExportBlockReason, openPrintableCourse } from '../utils/exports';
 
 export function DesignerView() {
   const course = useCourseStore((state) => state.course);
@@ -66,6 +65,33 @@ export function DesignerView() {
   const selected = course.obstacles.find((item) => item.id === selectedId) ?? null;
   const selectedIndex = selected ? course.sequence.indexOf(selected.id) : -1;
   const analysis = useMemo(() => analyzeCourse(course), [course]);
+  const conflicts = useCourseStore((state) => state.session?.conflicts ?? []);
+  const analysisStale = useCourseStore((state) => state.analysisStale);
+  const exportBlockReason = getExportBlockReason(analysisStale, conflicts);
+
+  const handleExportJudge = () => {
+    const reason = getExportBlockReason(
+      useCourseStore.getState().analysisStale,
+      useCourseStore.getState().session?.conflicts ?? [],
+    );
+    if (reason) {
+      notify(reason, 'error');
+      return;
+    }
+    downloadJudgeSheet(course, analysis, analysisStale, conflicts);
+  };
+
+  const handlePrint = () => {
+    const reason = getExportBlockReason(
+      useCourseStore.getState().analysisStale,
+      useCourseStore.getState().session?.conflicts ?? [],
+    );
+    if (reason) {
+      notify(reason, 'error');
+      return;
+    }
+    openPrintableCourse(course, analysis, courseToDataUrl(course), analysisStale, conflicts);
+  };
 
   const handleDuplicate = () => {
     if (!selected) return;
@@ -84,8 +110,36 @@ export function DesignerView() {
   };
 
   const handleShare = async () => {
-    const token = courseToShareToken(course);
-    const url = `${window.location.origin}${window.location.pathname}#course=${token}`;
+    const state = useCourseStore.getState();
+    const session = state.session;
+    let url: string;
+    if (session) {
+      // 本机有未保存调整时先尝试发布，让链接指向包含本机修改的新版本；
+      // 发布不了（断网/有冲突）就把当前路线随链接带出，由对方按三方合并处理
+      let rev = session.remoteRev;
+      let sharedCourse = state.course;
+      if (
+        session.online &&
+        session.conflicts.length === 0 &&
+        session.baseCourse &&
+        JSON.stringify(state.course) !== JSON.stringify(session.baseCourse)
+      ) {
+        const outcome = state.publishLocal();
+        if (outcome.status === 'published') {
+          rev = outcome.rev;
+          sharedCourse = useCourseStore.getState().course;
+        }
+      }
+      url = buildShareUrl({
+        v: 2,
+        docId: session.docId,
+        rev,
+        from: session.peerName,
+        course: sharedCourse,
+      });
+    } else {
+      url = useCourseStore.getState().beginShare();
+    }
     setShareText(url);
     setShareOpen(true);
     try {
@@ -164,9 +218,12 @@ export function DesignerView() {
               value={course.name}
               onChange={(event) => store.setCourseName(event.currentTarget.value)}
             />
-            <Badge variant="light" color={analysis.score > 80 ? 'teal' : 'yellow'}>
-              稳定度 {analysis.score}
+            <Badge variant="light" color={analysisStale ? 'orange' : analysis.score > 80 ? 'teal' : 'yellow'}>
+              {analysisStale ? '稳定度待重算' : `稳定度 ${analysis.score}`}
             </Badge>
+            {conflicts.length > 0 && (
+              <Badge variant="filled" color="red">{conflicts.length} 处冲突待裁决</Badge>
+            )}
           </Group>
           <Group gap={6} wrap="nowrap">
             <Tooltip label="撤销">
@@ -192,6 +249,8 @@ export function DesignerView() {
           </Group>
         </div>
 
+        <CollabBar />
+
         <div className="arena-stage panel-surface">
           <ArenaCanvas
             course={course}
@@ -199,6 +258,7 @@ export function DesignerView() {
             highlightedIds={analysis.issues.flatMap((issue) => issue.obstacleIds)}
             gridVisible={gridVisible}
             placementPreset={placementPreset}
+            conflicts={conflicts}
             onSelect={store.select}
             onMove={store.moveObstacle}
             onPlace={store.addObstacle}
@@ -223,6 +283,12 @@ export function DesignerView() {
           <Tabs.List grow>
             <Tabs.Tab value="inspect">障碍</Tabs.Tab>
             <Tabs.Tab value="analysis">路线分析</Tabs.Tab>
+            <Tabs.Tab
+              value="conflicts"
+              rightSection={conflicts.length > 0 ? <span className="tab-conflict-dot">{conflicts.length}</span> : null}
+            >
+              冲突{conflicts.length > 0 ? ` (${conflicts.length})` : ''}
+            </Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="inspect" pt="md">
             <ScrollArea h="100%" offsetScrollbars>
@@ -313,24 +379,37 @@ export function DesignerView() {
               <AnalysisPanel analysis={analysis} />
             </ScrollArea>
           </Tabs.Panel>
+          <Tabs.Panel value="conflicts" pt="md">
+            <ScrollArea h="100%" offsetScrollbars>
+              <ConflictResolver />
+            </ScrollArea>
+          </Tabs.Panel>
         </Tabs>
         <div className="export-strip">
           <Button
             variant="light"
             fullWidth
             leftSection={<Printer size={16} />}
-            onClick={() => openPrintableCourse(course, analysis, courseToDataUrl(course))}
+            onClick={handlePrint}
+            disabled={Boolean(exportBlockReason)}
+            title={exportBlockReason ?? '打印含步数表的路线图'}
           >
             打印路线图
           </Button>
           <Button
             variant="light"
             fullWidth
+            color={exportBlockReason ? 'gray' : undefined}
             leftSection={<Download size={16} />}
-            onClick={() => downloadJudgeSheet(course, analysis)}
+            onClick={handleExportJudge}
+            disabled={Boolean(exportBlockReason)}
+            title={exportBlockReason ?? '导出裁判用 CSV 表'}
           >
-            导出裁判表
+            {analysisStale ? '重算后才能导出裁判表' : '导出裁判表'}
           </Button>
+          {exportBlockReason && (
+            <Text size="xs" c="orange" ta="center">{exportBlockReason}</Text>
+          )}
         </div>
       </aside>
 
@@ -389,8 +468,11 @@ export function DesignerView() {
         </Button>
       </Modal>
 
-      <Modal opened={shareOpen} onClose={() => setShareOpen(false)} title="路线分享链接">
-        <Text size="sm" c="dimmed">链接包含当前场地、马匹参数和完整障碍布局。收到链接的教练可直接继续编辑。</Text>
+      <Modal opened={shareOpen} onClose={() => setShareOpen(false)} title="可续作的协作链接" size="lg">
+        <Text size="sm" c="dimmed">
+          链接指向这份路线的共享协作。另一位教练打开后可直接断网继续挪动障碍、调整跳次顺序，
+          回网点“取回并合并”：无冲突的调整自动并入，同一处两边都改过会保留两版并标出冲突。
+        </Text>
         <Paper withBorder mt="md" p="sm">
           <Text size="xs" className="share-url">{shareText}</Text>
         </Paper>

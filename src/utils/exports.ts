@@ -1,4 +1,4 @@
-import type { Course, RouteAnalysis } from '../types/course';
+import type { ConflictRecord, Course, RouteAnalysis } from '../types/course';
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -9,7 +9,28 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function downloadJudgeSheet(course: Course, analysis: RouteAnalysis) {
+/** 导出/打印前置校验：步数表待重算，或存在未裁决冲突时禁止产出裁判资料。 */
+export function getExportBlockReason(
+  analysisStale: boolean,
+  conflicts: ConflictRecord[],
+): string | null {
+  if (analysisStale) {
+    return '场地尺寸或马匹步幅已调整，步数表与稳定度待重新计算。请先在“路线分析”里重算后再导出。';
+  }
+  if (conflicts.length > 0) {
+    return `还有 ${conflicts.length} 处两位教练都改过的冲突未裁决，保留两版的内容不能导出裁判表。`;
+  }
+  return null;
+}
+
+export function downloadJudgeSheet(
+  course: Course,
+  analysis: RouteAnalysis,
+  analysisStale = false,
+  conflicts: ConflictRecord[] = [],
+): boolean {
+  const blocked = getExportBlockReason(analysisStale, conflicts);
+  if (blocked) return false;
   const lines = [
     ['路线', course.name],
     ['场地', `${course.arena.width} × ${course.arena.length} m`, course.arena.surface],
@@ -39,11 +60,20 @@ export function downloadJudgeSheet(course: Course, analysis: RouteAnalysis) {
     .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
     .join('\n');
   downloadBlob(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }), `${course.name}-裁判表.csv`);
+  return true;
 }
 
-export function openPrintableCourse(course: Course, analysis: RouteAnalysis, imageUrl: string) {
+export function openPrintableCourse(
+  course: Course,
+  analysis: RouteAnalysis,
+  imageUrl: string,
+  analysisStale = false,
+  conflicts: ConflictRecord[] = [],
+): boolean {
+  const blocked = getExportBlockReason(analysisStale, conflicts);
+  if (blocked) return false;
   const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=900');
-  if (!printWindow) return;
+  if (!printWindow) return false;
   const rows = analysis.rows
     .map((row) => {
       const obstacle = course.obstacles.find((item) => item.id === row.fromId);
@@ -80,5 +110,6 @@ export function openPrintableCourse(course: Course, analysis: RouteAnalysis, ima
   `);
   printWindow.document.close();
   printWindow.focus();
+  return true;
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { Course, Obstacle, ObstaclePreset } from '../types/course';
+import type { ConflictRecord, Course, Obstacle, ObstaclePreset } from '../types/course';
 import {
   drawCourse,
   fromCanvasPoint,
@@ -14,6 +14,7 @@ interface ArenaCanvasProps {
   highlightedIds: string[];
   gridVisible: boolean;
   placementPreset: ObstaclePreset | null;
+  conflicts?: ConflictRecord[];
   onSelect: (id: string | null) => void;
   onMove: (id: string, x: number, y: number) => void;
   onPlace: (preset: ObstaclePreset, x: number, y: number) => void;
@@ -25,6 +26,7 @@ export function ArenaCanvas({
   highlightedIds,
   gridVisible,
   placementPreset,
+  conflicts = [],
   onSelect,
   onMove,
   onPlace,
@@ -65,8 +67,9 @@ export function ArenaCanvas({
       selectedId,
       highlightedIds,
       showGrid: gridVisible,
+      conflicts,
     });
-  }, [course, gridVisible, highlightedIds, selectedId, size]);
+  }, [course, gridVisible, highlightedIds, selectedId, size, conflicts]);
 
   const byId = useMemo(() => new Map(course.obstacles.map((item) => [item.id, item])), [course.obstacles]);
 

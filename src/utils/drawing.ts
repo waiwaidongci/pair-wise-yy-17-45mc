@@ -1,4 +1,5 @@
-import type { Course, Obstacle } from '../types/course';
+import type { ConflictRecord, Course, Obstacle } from '../types/course';
+import { conflictGhostPosition } from './collab';
 import { obstaclePoint } from './course';
 
 interface DrawingOptions {
@@ -8,6 +9,7 @@ interface DrawingOptions {
   highlightedIds?: string[];
   showGrid?: boolean;
   background?: string;
+  conflicts?: ConflictRecord[];
 }
 
 export interface ArenaTransform {
@@ -155,7 +157,14 @@ export function drawCourse(
   course: Course,
   options: DrawingOptions,
 ) {
-  const { width, height, selectedId, highlightedIds = [], showGrid = true } = options;
+  const {
+    width,
+    height,
+    selectedId,
+    highlightedIds = [],
+    showGrid = true,
+    conflicts = [],
+  } = options;
   context.clearRect(0, 0, width, height);
   context.fillStyle = options.background ?? '#f8fafc';
   context.fillRect(0, 0, width, height);
@@ -241,6 +250,86 @@ export function drawCourse(
       highlightedIds.includes(obstacle.id),
     );
   });
+
+  drawConflictMarkers(context, course, width, height, conflicts);
+}
+
+/** 合并冲突：琥珀色虚线圈出当前（本机）版本，并在对方那版的位置画半透明虚影。 */
+function drawConflictMarkers(
+  context: CanvasRenderingContext2D,
+  course: Course,
+  width: number,
+  height: number,
+  conflicts: ConflictRecord[],
+) {
+  conflicts.forEach((conflict) => {
+    if (conflict.kind === 'obstacle-field' || conflict.kind === 'obstacle-delete') {
+      const local = conflict.localValue as Obstacle | null;
+      const remote = conflict.remoteValue as Obstacle | null;
+
+      if (local) {
+        const point = toCanvasPoint(course, width, height, local.x, local.y);
+        const radius = Math.max(26, local.width * getArenaTransform(course, width, height).scale * 0.62);
+        context.save();
+        context.strokeStyle = '#f59e0b';
+        context.lineWidth = 2.5;
+        context.setLineDash([7, 5]);
+        context.beginPath();
+        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.setLineDash([]);
+        drawConflictBadge(context, point.x + radius, point.y - radius, '冲突');
+        context.restore();
+      }
+
+      const ghost = conflictGhostPosition(conflict);
+      if (local && remote && ghost && (Math.abs(ghost.x - local.x) > 0.05 || Math.abs(ghost.y - local.y) > 0.05)) {
+        const point = toCanvasPoint(course, width, height, remote.x, remote.y);
+        context.save();
+        context.globalAlpha = 0.5;
+        context.strokeStyle = '#0d9488';
+        context.fillStyle = `${remote.color}33`;
+        context.lineWidth = 2;
+        context.setLineDash([5, 4]);
+        const halfWidth = (remote.width * getArenaTransform(course, width, height).scale) / 2;
+        const halfSpread = (remote.spread * getArenaTransform(course, width, height).scale) / 2;
+        context.translate(point.x, point.y);
+        context.rotate((remote.rotation * Math.PI) / 180);
+        context.strokeRect(-halfWidth, -halfSpread, halfWidth * 2, halfSpread * 2);
+        context.restore();
+        context.save();
+        const unrotated = toCanvasPoint(course, width, height, remote.x, remote.y);
+        drawConflictBadge(context, unrotated.x + halfWidth, unrotated.y - halfSpread - 6, '对方版');
+        context.restore();
+      }
+    }
+  });
+}
+
+function drawConflictBadge(context: CanvasRenderingContext2D, x: number, y: number, text: string) {
+  context.font = 'bold 10px "Avenir Next", sans-serif';
+  const badgeWidth = context.measureText(text).width + 12;
+  const badgeHeight = 17;
+  const left = x - badgeWidth / 2;
+  const top = y - 9;
+  const radius = 8;
+  context.fillStyle = '#f59e0b';
+  context.beginPath();
+  context.moveTo(left + radius, top);
+  context.lineTo(left + badgeWidth - radius, top);
+  context.arcTo(left + badgeWidth, top, left + badgeWidth, top + radius, radius);
+  context.lineTo(left + badgeWidth, top + badgeHeight - radius);
+  context.arcTo(left + badgeWidth, top + badgeHeight, left + badgeWidth - radius, top + badgeHeight, radius);
+  context.lineTo(left + radius, top + badgeHeight);
+  context.arcTo(left, top + badgeHeight, left, top + badgeHeight - radius, radius);
+  context.lineTo(left, top + radius);
+  context.arcTo(left, top, left + radius, top, radius);
+  context.closePath();
+  context.fill();
+  context.fillStyle = '#fff';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(text, x, y - 0.5);
 }
 
 export function courseToDataUrl(course: Course, width = 1200, height = 1600) {

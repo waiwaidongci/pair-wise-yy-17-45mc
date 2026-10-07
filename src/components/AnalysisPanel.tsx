@@ -1,6 +1,7 @@
-import { Badge, Group, Progress, ScrollArea, Table, Text } from '@mantine/core';
-import { AlertCircle, CheckCircle2, TriangleAlert } from 'lucide-react';
+import { Badge, Button, Group, Progress, ScrollArea, Table, Text } from '@mantine/core';
+import { AlertCircle, CheckCircle2, RefreshCw, TriangleAlert } from 'lucide-react';
 import type { RouteAnalysis } from '../types/course';
+import { useCourseStore } from '../stores/courseStore';
 
 interface AnalysisPanelProps {
   analysis: RouteAnalysis;
@@ -13,29 +14,55 @@ const levelMeta = {
 } as const;
 
 export function AnalysisPanel({ analysis }: AnalysisPanelProps) {
+  const analysisStale = useCourseStore((state) => state.analysisStale);
+  const recomputeAnalysis = useCourseStore((state) => state.recomputeAnalysis);
+
   return (
     <div className="analysis-panel">
-      <Group justify="space-between" align="flex-end">
+      {analysisStale && (
+        <div className="stale-banner">
+          <TriangleAlert size={17} />
+          <div>
+            <Text size="sm" fw={800}>步数表与稳定度已失效</Text>
+            <Text size="xs" mt={2}>
+              场地尺寸或马匹步幅（含接近段、落地段）调整后，下面的步数、转角和评分都是旧参数算出来的。
+              旧裁判表重算前不能导出。
+            </Text>
+            <Button
+              mt={8}
+              size="xs"
+              leftSection={<RefreshCw size={13} />}
+              onClick={recomputeAnalysis}
+            >
+              立即重新计算
+            </Button>
+          </div>
+        </div>
+      )}
+      <Group justify="space-between" align="flex-end" className={analysisStale ? 'analysis-stale-body' : ''}>
         <div>
           <Text size="xs" c="dimmed">路线稳定度</Text>
-          <Text fw={900} fz={30}>{analysis.score}<span className="score-unit">/100</span></Text>
+          <Text fw={900} fz={30}>
+            {analysisStale ? '—' : analysis.score}
+            {!analysisStale && <span className="score-unit">/100</span>}
+          </Text>
         </div>
         <div className="analysis-metrics">
           <Text size="xs" c="dimmed">总距离</Text>
-          <Text fw={800}>{analysis.totalDistance} m</Text>
+          <Text fw={800}>{analysisStale ? '待重算' : `${analysis.totalDistance} m`}</Text>
           <Text size="xs" c="dimmed" mt={5}>预计用时</Text>
-          <Text fw={800}>{analysis.estimatedSeconds} s</Text>
+          <Text fw={800}>{analysisStale ? '待重算' : `${analysis.estimatedSeconds} s`}</Text>
         </div>
       </Group>
       <Progress
-        value={analysis.score}
+        value={analysisStale ? 0 : analysis.score}
         color={analysis.score > 85 ? 'teal' : analysis.score > 65 ? 'yellow' : 'red'}
         size="sm"
         radius="xl"
       />
 
       <Text className="panel-subtitle">实时风险检查</Text>
-      <div className="issue-list">
+      <div className={`issue-list ${analysisStale ? 'analysis-stale-body' : ''}`}>
         {analysis.issues.length === 0 ? (
           <div className="issue-item issue-ok">
             <CheckCircle2 size={18} />
